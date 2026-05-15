@@ -1,15 +1,23 @@
-# Preparcial 2 - API REST para Planificación de Viajes
+# Parcial - Gestión de Usuarios y Gastos Embebidos
 
 ## Autor
-Kevin Arenas - seth093
+Kevin Arenas - 202110673
 
 ---
 
 # Descripción del proyecto
 
-Este proyecto corresponde al desarrollo de una API REST modular construida con NestJS para la gestión de planes de viaje. La aplicación implementa un sistema de integración con una API externa de países utilizando un mecanismo de caché local en base de datos, evitando llamadas repetidas al servicio externo.
+Este proyecto corresponde al desarrollo de una API REST construida con NestJS para la gestión de planes de viaje, usuarios y control de gastos embebidos.
 
-La arquitectura fue desarrollada siguiendo una separación modular entre la lógica de países y la lógica de planes de viaje, garantizando encapsulamiento y reutilización de servicios internos.
+La aplicación implementa una arquitectura modular utilizando NestJS y TypeORM, integrando:
+
+- Persistencia con SQLite.
+- Validación mediante DTOs.
+- Consumo de API externa de países.
+- Sistema de caché local para países.
+- Gestión de usuarios propietarios de planes.
+- Inserción incremental de gastos embebidos.
+- Middleware de auditoría y telemetría.
 
 ---
 
@@ -25,63 +33,145 @@ La arquitectura fue desarrollada siguiendo una separación modular entre la lóg
 
 ---
 
-# Arquitectura del proyecto
+# Arquitectura del sistema
 
-El sistema está dividido en dos módulos principales:
+La aplicación está dividida en tres módulos principales:
+
+---
 
 ## CountriesModule
 
-Este módulo se encarga exclusivamente de la gestión interna de países.
+Módulo encargado de la gestión interna de países.
 
 Responsabilidades:
-- Buscar países en la base de datos local.
-- Consumir la API externa RestCountries cuando el país no existe localmente.
-- Almacenar países en caché para futuras consultas.
-- Exponer únicamente el servicio interno CountriesService.
+- Consultar países localmente.
+- Consumir la API externa RestCountries.
+- Guardar resultados en caché local.
+- Exponer CountriesService a otros módulos.
 
-Este módulo no expone endpoints HTTP públicos.
+Este módulo no expone endpoints públicos.
+
+---
+
+## UsersModule
+
+Módulo encargado de la gestión de usuarios.
+
+Responsabilidades:
+- Persistencia de usuarios.
+- Validación de existencia de usuarios.
+- Asociación de propietarios a planes de viaje.
+
+Entidad User:
+- id
+- name
+- email
 
 ---
 
 ## TravelPlansModule
 
-Este módulo representa la interfaz pública del sistema.
+Módulo principal del sistema.
 
 Responsabilidades:
 - Crear planes de viaje.
-- Consultar planes existentes.
-- Eliminar planes.
-- Comunicarse con CountriesService para validar la existencia de países antes de guardar un plan.
+- Asociar planes a usuarios.
+- Gestionar gastos embebidos.
+- Consultar y eliminar planes.
+- Integrarse con CountriesService y UsersService.
 
 Endpoints implementados:
+
 - POST /travel-plans
+- POST /travel-plans/:id/expenses
 - GET /travel-plans
 - GET /travel-plans/:id
 - DELETE /travel-plans/:id
 
 ---
 
-# Flujo de caché de países
+# Modelo de gastos embebidos
 
-Cuando el usuario crea un plan de viaje:
+Cada plan de viaje contiene un arreglo embebido llamado expenses.
 
-1. El TravelPlansService solicita al CountriesService la validación del país.
-2. CountriesService busca el país localmente en SQLite.
-3. Si el país existe:
-   - Se reutiliza la información local.
-   - No se realiza ninguna llamada externa.
-4. Si el país no existe:
-   - Se consulta la API RestCountries.
-   - La información obtenida se almacena localmente.
-   - El país queda cacheado para futuras solicitudes.
+Cada gasto contiene:
+- description
+- amount
+- category
 
-Este mecanismo reduce llamadas innecesarias a servicios externos y mejora el rendimiento de la aplicación.
+Ejemplo:
+
+```json
+{
+  "expenses": [
+    {
+      "description": "Hotel",
+      "amount": 500,
+      "category": "Hospedaje"
+    }
+  ]
+}
+```
+
+---
+
+# Implementación técnica de gastos embebidos
+
+El sistema implementa los gastos mediante un campo `simple-json` de TypeORM dentro de la entidad TravelPlan.
+
+Cuando se agrega un gasto:
+1. El servicio busca el plan existente.
+2. Se obtiene el arreglo expenses.
+3. Se inserta el nuevo objeto usando push().
+4. Se persiste nuevamente el objeto actualizado en SQLite.
+
+Esta estrategia permite manejar documentos embebidos sin crear tablas adicionales para gastos.
+
+---
+
+# Sistema de caché de países
+
+Cuando se crea un plan:
+
+1. TravelPlansService solicita validación del país.
+2. CountriesService busca el país en SQLite.
+3. Si existe:
+   - reutiliza el valor local.
+4. Si no existe:
+   - consulta la API RestCountries,
+   - guarda el país localmente,
+   - y reutiliza la información en futuras solicitudes.
+
+Esto reduce llamadas externas innecesarias y mejora el rendimiento.
+
+---
+
+# Middleware de auditoría
+
+La aplicación implementa un middleware global de telemetría.
+
+El middleware:
+- extrae el header `x-user-id`,
+- registra accesos en consola,
+- y monitorea rutas y métodos HTTP.
+
+Formato del log:
+
+```bash
+[User: 1] accedió a /travel-plans - POST
+```
+
+Si el header no existe:
+
+```bash
+[User: ANONYMOUS]
+```
 
 ---
 
 # Instalación y ejecución
 
-## 1. Clonar el repositorio
+## 1. Clonar repositorio
 
 ```bash
 git clone https://github.com/seth093/preparcial2.git
@@ -105,13 +195,13 @@ npm install
 
 ---
 
-## 4. Ejecutar el proyecto
+## 4. Ejecutar la aplicación
 
 ```bash
 npm run start:dev
 ```
 
-La aplicación se ejecutará en:
+La API se ejecutará en:
 
 ```bash
 http://localhost:3000
@@ -119,23 +209,29 @@ http://localhost:3000
 
 ---
 
-# Base de datos
+# Inicialización de base de datos
 
-El proyecto utiliza SQLite como motor de persistencia.
+El proyecto utiliza SQLite junto con TypeORM.
 
-La base de datos se genera automáticamente mediante TypeORM utilizando la opción synchronize.
+La base de datos `db.sqlite` se genera automáticamente al ejecutar la aplicación.
 
-Antes de presentar el parcial se recomienda eliminar el archivo:
+Si existen errores derivados de cambios estructurales en entidades, se recomienda eliminar:
 
 ```bash
 db.sqlite
 ```
 
-para evitar inconsistencias derivadas de cambios en el dominio.
+y volver a ejecutar:
+
+```bash
+npm run start:dev
+```
 
 ---
 
-# Ejemplos de pruebas en Postman
+# Pruebas en Postman
+
+---
 
 ## Crear plan de viaje
 
@@ -158,7 +254,34 @@ http://localhost:3000/travel-plans
   "title": "Viaje a Colombia",
   "startDate": "2026-06-01",
   "endDate": "2026-06-10",
-  "countryCode": "COL"
+  "countryCode": "COL",
+  "userId": 1
+}
+```
+
+---
+
+## Agregar gasto embebido
+
+### Endpoint
+
+```http
+POST /travel-plans/:id/expenses
+```
+
+### URL
+
+```bash
+http://localhost:3000/travel-plans/1/expenses
+```
+
+### Body JSON
+
+```json
+{
+  "description": "Hotel",
+  "amount": 500,
+  "category": "Hospedaje"
 }
 ```
 
@@ -212,6 +335,18 @@ http://localhost:3000/travel-plans/1
 
 ---
 
+# Release requerido
+
+El proyecto incluye un release en GitHub con la versión:
+
+```bash
+v1.0.0-parcial
+```
+
+marcando el estado final del código correspondiente a la entrega del parcial.
+
+---
+
 # Consideraciones finales
 
-El proyecto fue desarrollado siguiendo principios de modularidad y encapsulamiento propios de NestJS. La integración entre módulos se realizó mediante inyección de dependencias, manteniendo desacoplada la lógica de negocio y permitiendo la reutilización del servicio de países sin exponer rutas HTTP públicas.
+El proyecto fue desarrollado utilizando principios de modularidad y separación de responsabilidades propios de NestJS. La integración entre módulos se realizó mediante inyección de dependencias y middleware global, manteniendo desacoplada la lógica de negocio y facilitando la escalabilidad del sistema.

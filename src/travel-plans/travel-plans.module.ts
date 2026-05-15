@@ -7,11 +7,13 @@ import { TravelPlansController } from './travel-plans.controller';
 import { TravelPlansService } from './travel-plans.service';
 
 import { CountriesModule } from '../countries/countries.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([TravelPlan]),
     CountriesModule,
+    UsersModule,
   ],
 
   controllers: [TravelPlansController],

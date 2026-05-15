@@ -1,4 +1,8 @@
-import { IsNotEmpty, IsDateString } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsDateString,
+  IsNumber,
+} from 'class-validator';
 
 export class CreateTravelPlanDto {
 
@@ -13,4 +17,7 @@ export class CreateTravelPlanDto {
 
   @IsNotEmpty()
   countryCode: string;
+
+  @IsNumber()
+  userId: number;
 }
